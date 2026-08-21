@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
@@ -12,6 +13,14 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    const supabase = createBrowserSupabaseClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <aside className="w-full bg-slate-900 text-slate-100 lg:sticky lg:top-0 lg:h-screen lg:w-72">
@@ -49,6 +58,14 @@ export default function Sidebar() {
             Laboratory Management System
           </p>
           <p className="mt-3 text-sm font-medium text-slate-300">LabTrack v0.1</p>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-slate-700"
+          >
+            Çıkış Yap
+          </button>
         </div>
       </div>
     </aside>

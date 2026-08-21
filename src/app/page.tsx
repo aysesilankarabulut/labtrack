@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type InventorySummary = {
   current_stock: number | string | null;
   minimum_stock: number | string | null;
