@@ -17,6 +17,13 @@ export type InventoryCreateResult = {
   message: string;
 };
 
+export type StockMovementType = "IN" | "OUT";
+
+export type StockMovementResult = {
+  success: boolean;
+  message: string;
+};
+
 const toNumber = (value: FormDataEntryValue | null) => {
   if (value === null || value === undefined) {
     return Number.NaN;
@@ -97,6 +104,7 @@ export async function createInventoryItem(
     }
 
     revalidatePath("/inventory");
+    revalidatePath("/");
 
     return {
       success: true,
@@ -104,6 +112,92 @@ export async function createInventoryItem(
     };
   } catch (error) {
     console.error("Failed to add inventory item", error);
+    return {
+      success: false,
+      message: "Ürün eklenirken bir hata oluştu.",
+    };
+  }
+}
+
+export async function applyStockMovement(
+  formData: FormData,
+): Promise<StockMovementResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      message: "Ürün eklenirken bir hata oluştu.",
+    };
+  }
+
+  const itemId = String(formData.get("item_id") ?? "").trim();
+  const movementType = String(formData.get("movement_type") ?? "").trim().toUpperCase();
+  const quantity = toNumber(formData.get("quantity"));
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!itemId) {
+    return {
+      success: false,
+      message: "Ürün seçimi geçersiz.",
+    };
+  }
+
+  if (movementType !== "IN" && movementType !== "OUT") {
+    return {
+      success: false,
+      message: "İşlem türü geçersiz.",
+    };
+  }
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return {
+      success: false,
+      message: "Miktar 0'dan büyük olmalıdır.",
+    };
+  }
+
+  try {
+    const { error } = await supabase.rpc("apply_stock_movement", {
+      p_item_id: itemId,
+      p_movement_type: movementType,
+      p_quantity: quantity,
+      p_note: note.length > 0 ? note : null,
+    });
+
+    if (error) {
+      const normalizedError = error.message.toLowerCase();
+
+      if (
+        normalizedError.includes("yetersiz") ||
+        normalizedError.includes("insufficient") ||
+        normalizedError.includes("stok")
+      ) {
+        return {
+          success: false,
+          message: "Yetersiz stok.",
+        };
+      }
+
+      console.error("Failed to apply stock movement", error);
+      return {
+        success: false,
+        message: "Ürün eklenirken bir hata oluştu.",
+      };
+    }
+
+    revalidatePath("/inventory");
+    revalidatePath("/");
+
+    return {
+      success: true,
+      message: "Stok başarıyla güncellendi.",
+    };
+  } catch (error) {
+    console.error("Failed to apply stock movement", error);
     return {
       success: false,
       message: "Ürün eklenirken bir hata oluştu.",
