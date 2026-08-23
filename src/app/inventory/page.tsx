@@ -1,3 +1,4 @@
+import InventoryBatchModal from "@/components/InventoryBatchModal";
 import InventoryNewItemModal from "@/components/InventoryNewItemModal";
 import InventoryStockMovementModal from "@/components/InventoryStockMovementModal";
 import { createClient } from "@/lib/supabase/server";
@@ -28,6 +29,16 @@ type RecentMovementRecord = StockMovementRecord & {
   item_unit: string | null;
 };
 
+type InventoryBatchRecord = {
+  id: string;
+  item_id: string;
+  lot_number: string | null;
+  quantity: number | string | null;
+  expiry_date: string | null;
+  received_at: string | null;
+  created_at: string | null;
+};
+
 type InventoryPageProps = {
   searchParams?: Promise<{ q?: string | string[] | undefined }> | { q?: string | string[] | undefined };
 };
@@ -46,10 +57,11 @@ const toNumber = (value: number | string | null | undefined) => {
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
   let inventoryItems: InventoryRecord[] = [];
   let recentMovements: RecentMovementRecord[] = [];
+  let batchRecords: InventoryBatchRecord[] = [];
 
   try {
     const supabase = await createClient();
-    const [inventoryResponse, movementsResponse] = await Promise.all([
+    const [inventoryResponse, movementsResponse, batchResponse] = await Promise.all([
       supabase
         .from("inventory_items")
         .select("id, name, category, unit, current_stock, minimum_stock, storage_location")
@@ -59,6 +71,10 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         .select("id, created_at, item_id, movement_type, quantity, note")
         .order("created_at", { ascending: false })
         .limit(10),
+      supabase
+        .from("inventory_batches")
+        .select("id, item_id, lot_number, quantity, expiry_date, received_at, created_at")
+        .order("created_at", { ascending: false }),
     ]);
 
     if (inventoryResponse.error) {
@@ -69,7 +85,12 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       throw movementsResponse.error;
     }
 
+    if (batchResponse.error) {
+      throw batchResponse.error;
+    }
+
     inventoryItems = (inventoryResponse.data ?? []) as InventoryRecord[];
+    batchRecords = (batchResponse.data ?? []) as InventoryBatchRecord[];
     const itemLookup = new Map(
       inventoryItems.map((item) => [item.id, { name: item.name ?? "Bilinmeyen ürün", unit: item.unit ?? "adet" }]),
     );
@@ -115,6 +136,57 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       })
     : inventoryItems;
 
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const activeLotCount = batchRecords.filter((batch) => {
+    if (!batch.expiry_date) {
+      return true;
+    }
+
+    const expiryDate = new Date(batch.expiry_date);
+    return !Number.isNaN(expiryDate.getTime()) && expiryDate.getTime() >= todayStart.getTime();
+  }).length;
+
+  const approachingExpiryCount = batchRecords.filter((batch) => {
+    if (!batch.expiry_date) {
+      return false;
+    }
+
+    const expiryDate = new Date(batch.expiry_date);
+    if (Number.isNaN(expiryDate.getTime())) {
+      return false;
+    }
+
+    const diffInDays = Math.ceil(
+      (expiryDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    return diffInDays >= 0 && diffInDays <= 30;
+  }).length;
+
+  const expiredLotCount = batchRecords.filter((batch) => {
+    if (!batch.expiry_date) {
+      return false;
+    }
+
+    const expiryDate = new Date(batch.expiry_date);
+    return !Number.isNaN(expiryDate.getTime()) && expiryDate.getTime() < todayStart.getTime();
+  }).length;
+
+  const batchSummaryCards = [
+    { label: "Aktif Lot", value: activeLotCount, className: "bg-emerald-50 text-emerald-700" },
+    { label: "SKT Yaklaşan", value: approachingExpiryCount, className: "bg-amber-50 text-amber-700" },
+    { label: "Süresi Dolmuş", value: expiredLotCount, className: "bg-red-50 text-red-700" },
+  ];
+
+  const batchesByItem = new Map<string, InventoryBatchRecord[]>();
+  batchRecords.forEach((batch) => {
+    const itemBatches = batchesByItem.get(batch.item_id) ?? [];
+    itemBatches.push(batch);
+    batchesByItem.set(batch.item_id, itemBatches);
+  });
+
   if (inventoryItems.length === 0) {
     return (
       <div className="space-y-6">
@@ -153,6 +225,15 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         </div>
 
         <InventoryNewItemModal />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {batchSummaryCards.map((card) => (
+          <div key={card.label} className={`rounded-2xl p-5 shadow-sm ${card.className}`}>
+            <p className="text-sm font-medium opacity-80">{card.label}</p>
+            <p className="mt-3 text-3xl font-bold">{card.value}</p>
+          </div>
+        ))}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -252,6 +333,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                               unit: item.unit,
                             }}
                             movementType="OUT"
+                          />
+                          <InventoryBatchModal
+                            item={{
+                              id: item.id,
+                              name: item.name,
+                              unit: item.unit,
+                            }}
+                            batches={batchesByItem.get(item.id) ?? []}
                           />
                         </div>
                       </td>

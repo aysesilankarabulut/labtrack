@@ -24,6 +24,11 @@ export type StockMovementResult = {
   message: string;
 };
 
+export type InventoryBatchCreateResult = {
+  success: boolean;
+  message: string;
+};
+
 const toNumber = (value: FormDataEntryValue | null) => {
   if (value === null || value === undefined) {
     return Number.NaN;
@@ -201,6 +206,135 @@ export async function applyStockMovement(
     return {
       success: false,
       message: "Ürün eklenirken bir hata oluştu.",
+    };
+  }
+}
+
+export async function addInventoryBatch(
+  formData: FormData,
+): Promise<InventoryBatchCreateResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      message: "Lot eklenirken bir hata oluştu.",
+    };
+  }
+
+  const itemId = String(formData.get("item_id") ?? "").trim();
+  const lotNumber = String(formData.get("lot_number") ?? "").trim();
+  const rawQuantity = formData.get("quantity");
+  const receivedAt = String(formData.get("received_at") ?? "").trim();
+  const expiryDate = String(formData.get("expiry_date") ?? "").trim();
+
+  if (!itemId) {
+    return {
+      success: false,
+      message: "Ürün seçimi geçersiz.",
+    };
+  }
+
+  if (!lotNumber) {
+    return {
+      success: false,
+      message: "Lot numarası zorunludur.",
+    };
+  }
+
+  const quantity = Number(rawQuantity ?? NaN);
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return {
+      success: false,
+      message: "Miktar 0'dan büyük olmalıdır.",
+    };
+  }
+
+  if (!receivedAt) {
+    return {
+      success: false,
+      message: "Giriş tarihi zorunludur.",
+    };
+  }
+
+  if (!expiryDate) {
+    return {
+      success: false,
+      message: "Son kullanma tarihi zorunludur.",
+    };
+  }
+
+  const expiryDateValue = new Date(expiryDate);
+  const receivedDateValue = new Date(receivedAt);
+
+  if (Number.isNaN(expiryDateValue.getTime()) || Number.isNaN(receivedDateValue.getTime())) {
+    return {
+      success: false,
+      message: "Tarih alanları geçersiz.",
+    };
+  }
+
+  if (expiryDateValue.getTime() < receivedDateValue.getTime()) {
+    return {
+      success: false,
+      message: "Son kullanma tarihi giriş tarihinden önce olamaz.",
+    };
+  }
+
+  try {
+    const { data: inventoryItem, error: inventoryItemError } = await supabase
+      .from("inventory_items")
+      .select("id")
+      .eq("id", itemId)
+      .maybeSingle();
+
+    if (inventoryItemError) {
+      console.error("Inventory item lookup error for batch insert", inventoryItemError);
+      return {
+        success: false,
+        message: "Lot eklenirken bir hata oluştu.",
+      };
+    }
+
+    if (!inventoryItem) {
+      return {
+        success: false,
+        message: "Lot eklenirken bir hata oluştu.",
+      };
+    }
+
+    const { error } = await supabase.from("inventory_batches").insert({
+      item_id: itemId,
+      lot_number: lotNumber,
+      quantity,
+      expiry_date: expiryDate,
+      received_at: receivedAt,
+    });
+
+    if (error) {
+      console.error("Inventory batch insert error:", error);
+      return {
+        success: false,
+        message: "Lot eklenirken bir hata oluştu.",
+      };
+    }
+
+    revalidatePath("/inventory");
+    revalidatePath("/");
+
+    return {
+      success: true,
+      message: "Lot başarıyla eklendi.",
+    };
+  } catch (error) {
+    console.error("Failed to add inventory batch", error);
+    return {
+      success: false,
+      message: "Lot eklenirken bir hata oluştu.",
     };
   }
 }

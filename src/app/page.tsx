@@ -3,13 +3,24 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 type InventorySummary = {
+  id: string;
+  name: string | null;
   current_stock: number | string | null;
   minimum_stock: number | string | null;
 };
 
 type EquipmentSummary = {
+  id: string;
+  name: string | null;
   status: string | null;
   next_maintenance_date: string | null;
+};
+
+type InventoryBatchSummary = {
+  id: string;
+  item_id: string;
+  lot_number: string | null;
+  expiry_date: string | null;
 };
 
 const toNumber = (value: number | string | null | undefined) => {
@@ -23,45 +34,33 @@ const toNumber = (value: number | string | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const alerts = [
-  {
-    title: "Lamel",
-    description: "Kritik stok seviyesinin altında",
-    tag: "Kritik",
-    tone: "bg-red-50 text-red-700 ring-red-100",
-    tagClassName: "bg-red-100 text-red-700",
-  },
-  {
-    title: "Eozin",
-    description: "Minimum stok seviyesine yaklaştı",
-    tag: "Düşük Stok",
-    tone: "bg-amber-50 text-amber-700 ring-amber-100",
-    tagClassName: "bg-amber-100 text-amber-700",
-  },
-  {
-    title: "Santrifüj 01",
-    description: "Periyodik bakım zamanı geldi",
-    tag: "Bakım",
-    tone: "bg-blue-50 text-blue-700 ring-blue-100",
-    tagClassName: "bg-blue-100 text-blue-700",
-  },
-];
-
 export default async function HomePage() {
   let totalProducts = 0;
   let criticalStock = 0;
   let activeEquipment = 0;
   let maintenanceRequired = 0;
+  let alerts: Array<{
+    title: string;
+    description: string;
+    tag: string;
+    tone: string;
+    tagClassName: string;
+  }> = [];
 
   try {
     const supabase = await createClient();
-    const [inventoryResponse, equipmentResponse] = await Promise.all([
-      supabase.from("inventory_items").select("current_stock, minimum_stock"),
-      supabase.from("equipment").select("status, next_maintenance_date"),
+    const [inventoryResponse, inventoryBatchResponse, equipmentResponse] = await Promise.all([
+      supabase.from("inventory_items").select("id, name, current_stock, minimum_stock"),
+      supabase.from("inventory_batches").select("id, item_id, lot_number, expiry_date"),
+      supabase.from("equipment").select("id, name, status, next_maintenance_date"),
     ]);
 
     if (inventoryResponse.error) {
       throw inventoryResponse.error;
+    }
+
+    if (inventoryBatchResponse.error) {
+      throw inventoryBatchResponse.error;
     }
 
     if (equipmentResponse.error) {
@@ -69,12 +68,18 @@ export default async function HomePage() {
     }
 
     const inventoryItems = (inventoryResponse.data ?? []) as InventorySummary[];
+    const inventoryBatches = (inventoryBatchResponse.data ?? []) as InventoryBatchSummary[];
+    const equipmentItems = (equipmentResponse.data ?? []) as EquipmentSummary[];
+
     totalProducts = inventoryItems.length;
     criticalStock = inventoryItems.filter(
       (item) => toNumber(item.current_stock) <= toNumber(item.minimum_stock),
     ).length;
 
-    const equipmentItems = (equipmentResponse.data ?? []) as EquipmentSummary[];
+    const itemLookup = new Map(
+      inventoryItems.map((item) => [item.id, item.name ?? "Bilinmeyen ürün"]),
+    );
+
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -92,6 +97,91 @@ export default async function HomePage() {
       return !Number.isNaN(nextMaintenanceDate.getTime())
         && nextMaintenanceDate.getTime() <= todayStart.getTime();
     }).length;
+
+    alerts = [
+      ...inventoryItems
+        .filter((item) => toNumber(item.current_stock) <= toNumber(item.minimum_stock))
+        .map((item) => ({
+          title: item.name ?? "Bilinmeyen ürün",
+          description: "Kritik stok seviyesinin altında.",
+          tag: "Kritik",
+          tone: "bg-red-50 text-red-700 ring-red-100",
+          tagClassName: "bg-red-100 text-red-700",
+        })),
+      ...inventoryBatches
+        .filter((batch) => batch.expiry_date)
+        .map((batch) => {
+          const expiryDate = new Date(batch.expiry_date as string);
+          const itemName = itemLookup.get(batch.item_id) ?? "Bilinmeyen ürün";
+
+          if (Number.isNaN(expiryDate.getTime())) {
+            return null;
+          }
+
+          const diffInDays = Math.ceil(
+            (expiryDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24),
+          );
+
+          if (expiryDate.getTime() < todayStart.getTime()) {
+            return {
+              title: itemName,
+              description: `${batch.lot_number ?? "Lot"} süresi dolmuş.`,
+              tag: "Süresi Dolmuş",
+              tone: "bg-red-50 text-red-700 ring-red-100",
+              tagClassName: "bg-red-100 text-red-700",
+            };
+          }
+
+          if (diffInDays <= 30) {
+            return {
+              title: itemName,
+              description: `${batch.lot_number ?? "Lot"} / Son kullanma tarihine ${diffInDays} gün kaldı.`,
+              tag: "SKT Yaklaşıyor",
+              tone: "bg-amber-50 text-amber-700 ring-amber-100",
+              tagClassName: "bg-amber-100 text-amber-700",
+            };
+          }
+
+          return null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+      ...equipmentItems
+        .filter((item) => item.next_maintenance_date)
+        .map((item) => {
+          const nextMaintenanceDate = new Date(item.next_maintenance_date as string);
+
+          if (Number.isNaN(nextMaintenanceDate.getTime())) {
+            return null;
+          }
+
+          const diffInDays = Math.ceil(
+            (nextMaintenanceDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24),
+          );
+
+          if (nextMaintenanceDate.getTime() < todayStart.getTime()) {
+            return {
+              title: item.name ?? "Bilinmeyen cihaz",
+              description: "Bakım tarihi geçti.",
+              tag: "Bakım Gecikti",
+              tone: "bg-red-50 text-red-700 ring-red-100",
+              tagClassName: "bg-red-100 text-red-700",
+            };
+          }
+
+          if (diffInDays <= 30) {
+            return {
+              title: item.name ?? "Bilinmeyen cihaz",
+              description: `Bakım tarihine ${diffInDays} gün kaldı.`,
+              tag: "Bakım Yaklaşıyor",
+              tone: "bg-blue-50 text-blue-700 ring-blue-100",
+              tagClassName: "bg-blue-100 text-blue-700",
+            };
+          }
+
+          return null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    ];
   } catch (error) {
     console.error("Failed to load dashboard summary", error);
 
@@ -149,7 +239,7 @@ export default async function HomePage() {
         <div className="space-y-3">
           {alerts.map((alert) => (
             <div
-              key={alert.title}
+              key={`${alert.title}-${alert.tag}`}
               className={[
                 "flex flex-col gap-3 rounded-xl p-4 ring-1 sm:flex-row sm:items-center sm:justify-between",
                 alert.tone,
