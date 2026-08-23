@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import LoginForm from "@/components/LoginForm";
 import { createClient } from "@/lib/supabase/server";
 
+export const metadata = {
+  title: "LabTrack | Giriş",
+};
+
 export default async function LoginPage() {
   const supabase = await createClient();
   const {

@@ -17,6 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "LabTrack",
   description: "Laboratory inventory and equipment management system",
+  applicationName: "LabTrack",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

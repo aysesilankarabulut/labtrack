@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "LabTrack | Maintenance",
+};
+
 type EquipmentSummary = {
   id: string;
   name: string | null;
