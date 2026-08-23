@@ -7,6 +7,11 @@ type InventorySummary = {
   minimum_stock: number | string | null;
 };
 
+type EquipmentSummary = {
+  status: string | null;
+  next_maintenance_date: string | null;
+};
+
 const toNumber = (value: number | string | null | undefined) => {
   if (value === null || value === undefined) {
     return 0;
@@ -45,24 +50,50 @@ const alerts = [
 export default async function HomePage() {
   let totalProducts = 0;
   let criticalStock = 0;
+  let activeEquipment = 0;
+  let maintenanceRequired = 0;
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("inventory_items")
-      .select("current_stock, minimum_stock");
+    const [inventoryResponse, equipmentResponse] = await Promise.all([
+      supabase.from("inventory_items").select("current_stock, minimum_stock"),
+      supabase.from("equipment").select("status, next_maintenance_date"),
+    ]);
 
-    if (error) {
-      throw error;
+    if (inventoryResponse.error) {
+      throw inventoryResponse.error;
     }
 
-    const inventoryItems = (data ?? []) as InventorySummary[];
+    if (equipmentResponse.error) {
+      throw equipmentResponse.error;
+    }
+
+    const inventoryItems = (inventoryResponse.data ?? []) as InventorySummary[];
     totalProducts = inventoryItems.length;
     criticalStock = inventoryItems.filter(
       (item) => toNumber(item.current_stock) <= toNumber(item.minimum_stock),
     ).length;
+
+    const equipmentItems = (equipmentResponse.data ?? []) as EquipmentSummary[];
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    activeEquipment = equipmentItems.filter((item) => item.status === "ACTIVE").length;
+    maintenanceRequired = equipmentItems.filter((item) => {
+      if (item.status === "MAINTENANCE") {
+        return true;
+      }
+
+      if (!item.next_maintenance_date) {
+        return false;
+      }
+
+      const nextMaintenanceDate = new Date(item.next_maintenance_date);
+      return !Number.isNaN(nextMaintenanceDate.getTime())
+        && nextMaintenanceDate.getTime() <= todayStart.getTime();
+    }).length;
   } catch (error) {
-    console.error("Failed to load dashboard inventory summary", error);
+    console.error("Failed to load dashboard summary", error);
 
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">
@@ -75,8 +106,8 @@ export default async function HomePage() {
   const stats = [
     { label: "Toplam Ürün", value: totalProducts },
     { label: "Kritik Stok", value: criticalStock },
-    { label: "Aktif Cihaz", value: 2 },
-    { label: "Bakım Gerekiyor", value: 1 },
+    { label: "Aktif Cihaz", value: activeEquipment },
+    { label: "Bakım Gerekiyor", value: maintenanceRequired },
   ];
 
   return (
