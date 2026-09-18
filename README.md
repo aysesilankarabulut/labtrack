@@ -133,25 +133,27 @@ This makes the QR workflow suitable for field use, rapid identification, and ope
 
 ## Screenshots
 
-Screenshots will be added here as the project evolves and real UI captures are collected.
-
 ### Dashboard
-<!-- screenshot -->
 
-### Inventory
-<!-- screenshot -->
+![Dashboard](docs/screenshots/dashboard.png)
 
-### Inventory QR Code
-<!-- screenshot -->
+### Inventory Management
 
-### Inventory Detail
-<!-- screenshot -->
+![Inventory Management](docs/screenshots/inventory.png)
 
-### Equipment
-<!-- screenshot -->
+### QR Code Workflow
 
-### Maintenance
-<!-- screenshot -->
+Inventory item QR codes can be generated and downloaded, and scanning them opens the corresponding inventory detail page.
+
+![QR Code Workflow](docs/screenshots/qr.png)
+
+### Equipment Management
+
+![Equipment Management](docs/screenshots/equipment.png)
+
+### Maintenance Management
+
+![Maintenance Management](docs/screenshots/maintenancemanegement.png)
 
 ## Live Demo
 
