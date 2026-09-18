@@ -1,5 +1,6 @@
 import InventoryBatchModal from "@/components/InventoryBatchModal";
 import InventoryNewItemModal from "@/components/InventoryNewItemModal";
+import InventoryQrCodeModal from "@/components/InventoryQrCodeModal";
 import InventoryStockMovementModal from "@/components/InventoryStockMovementModal";
 import { createClient } from "@/lib/supabase/server";
 
@@ -345,6 +346,13 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                               unit: item.unit,
                             }}
                             batches={batchesByItem.get(item.id) ?? []}
+                          />
+                          <InventoryQrCodeModal
+                            item={{
+                              id: item.id,
+                              name: item.name,
+                              unit: item.unit,
+                            }}
                           />
                         </div>
                       </td>

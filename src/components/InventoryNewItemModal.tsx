@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createInventoryItem, type InventoryCreateResult } from "@/app/inventory/actions";
 
 const categoryOptions = [
@@ -15,26 +15,32 @@ const unitOptions = ["adet", "şişe", "litre", "ml", "kutu", "paket", "rulo", "
 
 export default function InventoryNewItemModal() {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<InventoryCreateResult | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    formRef.current = form;
+    const formData = new FormData(form);
     setIsSubmitting(true);
     setFeedback(null);
 
-    const result = await createInventoryItem(formData);
+    try {
+      const result = await createInventoryItem(formData);
 
-    if (result.success) {
-      setIsOpen(false);
-      event.currentTarget.reset();
-      router.refresh();
+      if (result.success) {
+        setIsOpen(false);
+        form.reset();
+        router.refresh();
+      }
+
+      setFeedback(result);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setFeedback(result);
-    setIsSubmitting(false);
   };
 
   return (
@@ -84,7 +90,7 @@ export default function InventoryNewItemModal() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="md:col-span-2">
                   <label htmlFor="name" className="mb-2 block text-sm font-medium text-slate-700">

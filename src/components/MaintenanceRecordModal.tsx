@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createMaintenanceRecord, type MaintenanceCreateResult } from "@/app/maintenance/actions";
 
 type EquipmentOption = {
@@ -30,6 +30,7 @@ export default function MaintenanceRecordModal({
   buttonLabel = "+ Bakım Kaydı",
 }: MaintenanceRecordModalProps) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<MaintenanceCreateResult | null>(null);
@@ -42,26 +43,30 @@ export default function MaintenanceRecordModal({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    formRef.current = form;
+    const formData = new FormData(form);
 
     setIsSubmitting(true);
     setFeedback(null);
 
-    const result = await createMaintenanceRecord(formData);
+    try {
+      const result = await createMaintenanceRecord(formData);
 
-    if (result.success) {
-      setFeedback(result);
-      window.setTimeout(() => {
-        setIsOpen(false);
-        setFeedback(null);
-        event.currentTarget.reset();
-        router.refresh();
-      }, 800);
-    } else {
-      setFeedback(result);
+      if (result.success) {
+        setFeedback(result);
+        window.setTimeout(() => {
+          setIsOpen(false);
+          setFeedback(null);
+          formRef.current?.reset();
+          router.refresh();
+        }, 800);
+      } else {
+        setFeedback(result);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   return (
@@ -106,7 +111,7 @@ export default function MaintenanceRecordModal({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div className="grid gap-5 md:grid-cols-2">
                 <div>
                   <label htmlFor="equipment_id" className="mb-2 block text-sm font-medium text-slate-700">

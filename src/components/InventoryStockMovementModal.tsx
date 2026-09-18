@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { applyStockMovement, type StockMovementResult } from "@/app/inventory/actions";
 
 type InventoryStockMovementItem = {
@@ -29,6 +29,7 @@ const toNumber = (value: number | string | null | undefined) => {
 
 export default function InventoryStockMovementModal({ item, movementType }: StockMovementModalProps) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<StockMovementResult | null>(null);
@@ -38,25 +39,29 @@ export default function InventoryStockMovementModal({ item, movementType }: Stoc
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    formRef.current = form;
+    const formData = new FormData(form);
     formData.set("item_id", item.id);
     formData.set("movement_type", movementType);
 
     setIsSubmitting(true);
     setFeedback(null);
 
-    const result = await applyStockMovement(formData);
+    try {
+      const result = await applyStockMovement(formData);
 
-    if (result.success) {
-      setIsOpen(false);
-      event.currentTarget.reset();
-      setFeedback(result);
-      router.refresh();
-    } else {
-      setFeedback(result);
+      if (result.success) {
+        setIsOpen(false);
+        form.reset();
+        setFeedback(result);
+        router.refresh();
+      } else {
+        setFeedback(result);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   return (
@@ -119,7 +124,7 @@ export default function InventoryStockMovementModal({ item, movementType }: Stoc
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div className="space-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Ürün
